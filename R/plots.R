@@ -129,7 +129,8 @@ plot_convergence_all <- function(results, criteria = CRITERIA) {
        xlab = "Sample size n (log scale)", ylab = "|Skewness| of sample means (log scale)",
        main = "How fast does each population lose its skew?")
   abline(h = criteria$skew, lty = 2, col = "gray30")
-  text(max(N_GRID), criteria$skew, paste("threshold", criteria$skew), pos = 3, cex = 0.75, offset = 0.3)
+  text(max(N_GRID), criteria$skew, sprintf("threshold %.2f", criteria$skew),
+       adj = c(1, -0.5), cex = 0.75)
   abline(v = 30, lty = 3, col = "gray60")
   text(30, max(ys), "n = 30", pos = 4, cex = 0.75, col = "gray40")
   for (i in seq_along(finite)) {
@@ -138,6 +139,6 @@ plot_convergence_all <- function(results, criteria = CRITERIA) {
     lines(d$n, y, col = cols[i], lwd = 2)
     points(d$n, y, col = cols[i], pch = 19, cex = 0.7)
   }
-  legend("bottomleft", bg = "white", box.col = "gray85", legend = vapply(finite, function(r) r$pop$label, ""),
+  legend("bottomleft", legend = vapply(finite, function(r) r$pop$label, ""),
          col = cols[seq_along(finite)], lwd = 2, bty = "n", cex = 0.75)
 }
