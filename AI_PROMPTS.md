@@ -16,7 +16,20 @@ Attached with the prompt were all of the course materials: the Project 1 assignm
 
 This set the seed to **6877** (the last four digits, as the guidance requires) and gave the push destination.
 
-## 2. Design decisions made with the AI
+> I don't want the professor to think that the entire project was made by AI, I need it to have more of my part done, in terms of the conclusion and everything
+
+In response, all of Claude's written interpretation (the per-population "Result" paragraphs, the key findings, the cross-population discussion and the conclusions) was removed from the report and README, and replaced with guiding questions for me to answer myself.
+
+## 2. Who did what
+
+| Part | Written by |
+|---|---|
+| Simulation code (`R/`), figures, tables, render script | Claude |
+| Theory-based predictions and study-design text in the report | Claude |
+| **Conclusions** (report and README), including the short answer to "Is the number 30?" | **Me.** Claude only converted my math delimiters to Quarto syntax and checked my numbers against the results |
+| Per-population interpretation ("Your analysis" sections) | Me, in progress |
+
+## 3. Design decisions made with the AI
 
 | Decision | Choice | Reason |
 |---|---|---|
@@ -29,7 +42,7 @@ This set the seed to **6877** (the last four digits, as the guidance requires) a
 | Fatigue model | A sample of size n is n shots with p spread from 0.90 to 0.50 | Keeps p̄ = 0.70 at every n, and the exact Poisson-binomial SE is available |
 | Shapiro–Wilk | Reported, not used for the verdict | It rejects tiny, irrelevant deviations at 5,000 values |
 
-## 3. How the output was checked
+## 4. How the output was checked
 
 Every piece of generated code was run, and the results were compared with known theory before being trusted:
 
@@ -39,7 +52,7 @@ Every piece of generated code was run, and the results were compared with known 
 4. **Cauchy.** Theory says the mean of n Cauchy draws is again Cauchy(0, 1). The simulated IQR of the means stays at about 2 for every n, and the share of means beyond ±10 matches 2·P(X < −10) ≈ 6.3%.
 5. **Seed robustness.** The whole study was repeated with five seeds to make sure the conclusions do not depend on one lucky draw.
 
-## 4. Corrections made along the way
+## 5. Corrections made along the way
 
 These are real issues found while checking the AI's first drafts. Each one was fixed before the final render.
 
@@ -49,11 +62,11 @@ These are real issues found while checking the AI's first drafts. Each one was f
 | The n grid originally stopped at 500, where the exponential and dependent cases were still converging | The convergence table had no stable pass at the top of the grid | Extended to n = 1000 and 2000, and processed large n in blocks to limit memory |
 | `plot_population()` crashed with `invalid 'xlim' value` for continuous populations | First Quarto render failed | Compute a default x-range when none is given |
 | The robustness table's "Seed 6877" column did not reproduce the main results | Age at death showed 30 in one table and 50 in the other | The robustness loop now applies the same per-population seed offset as the main run |
-| Several sentences in the first draft hardcoded numbers (e.g. "age at death needs about 20") that did not hold for seed 6877 | Read the rendered text against the result tables | Replaced with inline R values, so the prose always matches the current seed |
+| Several sentences in Claude's first draft hardcoded numbers (e.g. "age at death needs about 20") that did not hold for seed 6877 | Read the rendered text against the result tables | Replaced with inline R values (that prose was later removed entirely in favour of my own write-up) |
 | The summary table showed a Cauchy "skewness" of about 99, which is meaningless because the moment does not exist | Reviewed the summary table | Displayed as "undefined", with quantile-based evidence (IQR) used instead |
 | The GitHub-markdown figures disappeared after rendering | The `.md` referenced images that no longer existed | HTML's self-contained mode deletes the figure folder, so `render.sh` now renders HTML first and GitHub markdown second |
 
-## 5. What I would verify myself before relying on it
+## 6. What I would verify myself before relying on it
 
 - Re-run `./render.sh` and confirm the numbers match the committed outputs. They should be identical, because the seed is fixed.
 - Change `STUDENT_ID_LAST4` in `R/config.R` to a different value and confirm the *conclusions* (not the exact numbers) stay the same.
