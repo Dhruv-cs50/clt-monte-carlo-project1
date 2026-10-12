@@ -2,7 +2,7 @@
 
 **Math 167R, Project 1: a Monte Carlo investigation of the CLT** · Dhruv Shah
 
-> **Is the number 30?** No. n = 30 is a rule of thumb that works for symmetric populations and fails for skewed, discrete, dependent or heavy-tailed ones. Across eight populations, the sample size needed for the mean to look normal ranged from **2** (normal) to **about 1,000** (dependent process) to **never** (Cauchy). The best single predictor of the required n is the **skewness of the population**.
+> **Is the number 30?** There is no single sample size that guarantees an approximately normal sampling distribution. The required $n$ depends on the population’s skewness, discreteness, dependence, and variance. Therefore, $n=30$ is only a rough rule of thumb, not a universal answer.
 
 📄 **Full report:** [`report/clt_project_1.md`](report/clt_project_1.md) (readable on GitHub, with every figure) · [`report/clt_project_1.html`](report/clt_project_1.html) (self-contained HTML; download and open in a browser)
 
@@ -44,13 +44,25 @@ Each population also gets histograms with the CLT normal curve, normal Q–Q plo
 
 ## Conclusions
 
-1. **The CLT gets the center and spread right almost immediately; the shape is what takes time.** At n = 30 the SD/SE ratio is within about 1% of 1 for every finite-variance population, when the correct SE formula is used.
-2. **Skewness sets the pace.** The simulated skewness of the mean followed $\gamma_1/\sqrt n$ for every i.i.d. population. The exponential ($\gamma_1 = 2$) still has skewness ≈ 0.4 at n = 30 and needs about 100. A symmetric die needs about 10.
-3. **Discreteness causes problems the moments miss.** For Binomial(5, 0.10) and the fatigue model, the share of means beyond ±1.96 SE swings between about 2% and 8% at small n, because the mean lives on a lattice.
-4. **Infinite variance means no n is enough.** The mean of 2,000 Cauchy draws is exactly as spread out as one draw (IQR ≈ 2 at every n). The median, not the mean, is the statistic that works.
-5. **Dependence breaks the SE formula.** For the dependent machine-failure process, σ/√n overstates the true SE by about 16–20% at every n, because negative autocorrelation partly cancels errors. The correct SE has to be rebuilt from the autocorrelations.
-6. **Non-identical but independent data still obey a CLT (Lindeberg–Feller).** The variance must come from the individual $p_t$, though. Using the average p overstates the SE by about 3–5% (more at very small n).
-7. **The answer is a range, not a number.** Repeating the study with five seeds moved boundary cases by one or two grid steps, but never changed the ranking of the populations.
+**Does the CLT get the center and spread right at $n=30$?**
+Yes. For every finite-variance population, the simulated standard deviation was very close to the theoretical standard error. The main differences at $n=30$ were in the shape, especially skewness and tail behavior.
+
+1. **What does the skewness table show at $n=30$? Did it match the prediction?**
+   Yes, the results mostly matched the prediction that skewness decreases as $\gamma_1/\sqrt n$. For example, the exponential distribution had predicted skewness about 0.37 and simulated skewness about 0.40. The binomial distribution had predicted skewness about 0.22 and simulated skewness about 0.21.
+2. **Does skewness determine how quickly the sampling distribution becomes normal?**
+   Generally, yes. The symmetric normal and die distributions became approximately normal quickly. The more skewed exponential and binomial distributions needed larger sample sizes. However, skewness is not the only factor because discreteness and dependence also affect convergence.
+3. **What happens with discrete populations?**
+   Discrete populations can have sampling distributions that are close to normal in spread but still show irregular tail probabilities. This happened with the binomial and fatigue models because their sample means can only take certain discrete values.
+4. **What happens with the Cauchy population?**
+   The Cauchy sample mean does not become approximately normal, even when $n$ increases to 2,000. The Cauchy distribution has no finite variance, so the usual Central Limit Theorem does not apply.
+5. **What happens when observations are dependent?**
+   Dependence makes the usual standard-error formula incorrect. For the machine-failure process, negative autocorrelation reduced the true standard error, so the formula $\sigma/\sqrt n$ overestimated the spread. The distribution also remained skewed for much longer.
+6. **Can non-identical but independent observations still follow a CLT?**
+   Yes. The fatigue model became approximately normal even though its success probability changed between observations. However, its standard error had to be calculated using the individual probabilities rather than simply using the average probability.
+7. **Was $n=30$ enough for every population?**
+   No. It was enough for the normal, die, and fatigue populations, but not for the exponential, binomial, Cauchy, dependent machine-failure, or age-at-death populations.
+8. **What is the overall conclusion?**
+   There is no single sample size that guarantees an approximately normal sampling distribution. The required $n$ depends on the population’s skewness, discreteness, dependence, and variance. Therefore, $n=30$ is only a rough rule of thumb, not a universal answer.
 
 ## Populations studied
 
