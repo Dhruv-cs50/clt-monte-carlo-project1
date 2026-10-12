@@ -1,0 +1,16 @@
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Quarto intermediates
+/.quarto/
+report/.quarto/
+report/*_cache/
+report/clt_project_1.knit.md
+report/clt_project_1_files/libs/
+
+# OS / editor
+.DS_Store
+.vscode/
