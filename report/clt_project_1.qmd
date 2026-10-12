@@ -1,0 +1,726 @@
+---
+title: "When Does the Central Limit Theorem Kick In?"
+subtitle: "A Monte Carlo investigation of eight populations: Math 167R, Project 1"
+author: "Dhruv Shah"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    embed-resources: true
+    theme: cosmo
+    fig-width: 9
+    fig-height: 6
+  gfm:
+    toc: true
+    number-sections: true
+    fig-width: 9
+    fig-height: 6
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("../R/config.R")
+source("../R/populations.R")
+source("../R/simulate.R")
+source("../R/plots.R")
+
+fmt  <- function(x, d = 2) formatC(x, digits = d, format = "f")
+pct  <- function(x, d = 1) paste0(formatC(100 * x, digits = d, format = "f"), "%")
+kbl  <- function(df, digits = 3, ...) knitr::kable(df, digits = digits, row.names = FALSE, ...)
+options(knitr.kable.NA = "n/a")
+```
+
+```{r}
+#| label: run-all-simulations
+#| include: false
+# Dependent process: stationary moments estimated once from a 1,000,000-step chain.
+dep_moments <- estimate_dependent_moments(len = 1e6, seed = SEED)
+pop_dep <- make_dependent_population(dep_moments)
+
+populations <- list(
+  normal      = pop_normal,
+  die         = pop_die,
+  exponential = pop_exp,
+  binomial    = pop_binom,
+  cauchy      = pop_cauchy,
+  dependent   = pop_dep,
+  fatigue     = pop_fatigue,
+  age         = pop_age
+)
+
+# Each population gets its own seed offset, so any single section can be
+# re-run on its own and still reproduce exactly.
+results <- Map(function(p, i) run_population(p, seed_offset = i),
+               populations, seq_along(populations))
+
+diag_all <- do.call(rbind, lapply(results, `[[`, "diag"))
+at <- function(id, n, col) {
+  d <- results[[id]]$diag
+  d[d$n == n, col]
+}
+stable <- vapply(results, `[[`, numeric(1), "stable_n")
+pred   <- vapply(results, `[[`, numeric(1), "predicted_n")
+show_n <- function(x) ifelse(is.na(x), paste0("> ", max(N_GRID)), format(x))
+```
+
+# Executive summary
+
+The question this project asks is simple: **is n = 30 enough for the sampling distribution of the mean to be approximately normal?** I simulated `r format(REPS, big.mark = ",")` sample means at each of `r length(N_GRID)` sample sizes (n = `r paste(N_GRID, collapse = ", ")`) for the five required populations and all three extra-credit processes, then judged normality with four checks applied identically everywhere (defined in @sec-criterion).
+
+**Short answer: no. 30 is a rule of thumb that is right for well-behaved populations and wrong for the rest.**
+
+```{r}
+#| label: tbl-executive
+#| echo: false
+assumption_text <- function(p) {
+  broken <- names(p$assumptions)[!p$assumptions]
+  if (length(broken) == 0) "None (i.i.d., finite variance)" else
+    paste("Breaks:", paste(gsub("_", " ", broken), collapse = ", "))
+}
+exec <- data.frame(
+  Population            = vapply(populations, `[[`, "", "label"),
+  `CLT assumptions`     = vapply(populations, assumption_text, ""),
+  `Predicted n`         = show_n(pred),
+  `Observed n`          = show_n(stable),
+  `Skew @ n=30`         = ifelse(names(results) == "cauchy", "undefined",
+                                 fmt(sapply(names(results), at, n = 30, col = "skewness"))),
+  `SD/SE @ n=30`        = fmt(sapply(names(results), at, n = 30, col = "se_ratio")),
+  `Tail rate @ n=30`    = pct(sapply(names(results), at, n = 30, col = "tail_rate")),
+  `Normal @ n=30?`      = ifelse(sapply(names(results), at, n = 30, col = "approx_normal"), "Yes", "No"),
+  check.names = FALSE
+)
+exec$`Predicted n`[is.na(pred)] <- "n/a"
+exec$`SD/SE @ n=30`[names(results) == "cauchy"] <- "undefined"
+exec$`Tail rate @ n=30`[names(results) == "cauchy"] <- "undefined"
+rownames(exec) <- NULL
+write.csv(exec, "../output/summary_table.csv", row.names = FALSE)
+writeLines(knitr::kable(exec, format = "pipe", row.names = FALSE), "../output/summary_table.md")
+write.csv(diag_all, "../output/all_diagnostics.csv", row.names = FALSE)
+kbl(exec)
+```
+
+*Predicted n* comes from theory before simulating: the smallest n at which the skewness and kurtosis of the sample mean fall inside my thresholds. *Observed n* is the smallest simulated n from which **all four** checks pass and keep passing at every larger n.
+
+Key findings:
+
+1. **Shape of the parent drives the speed.** For i.i.d. data the skewness of $\bar X$ is $\gamma_1/\sqrt n$. The exponential ($\gamma_1 = 2$) needs about n = `r show_n(stable["exponential"])` before passing every check; a symmetric die needs only `r stable["die"]`.
+2. **Discreteness causes trouble the moments miss.** Binomial(5, 0.10) and the fatigue model are lattice-valued, so even when skewness is small, the share of means beyond ±1.96 SE jumps around because the possible values are spaced unevenly relative to the cutoff.
+3. **The Cauchy never converges.** The sample mean of `r format(max(N_GRID), big.mark = ",")` Cauchy draws is just as spread out as a single draw (IQR ≈ 2 at every n). A larger sample does not help when the variance is infinite.
+4. **Dependence breaks the standard-error formula, not only the shape.** For the machine-failure process the naive $\sigma/\sqrt n$ overstates the true SE by about `r pct(1 / at("dependent", 30, "naive_ratio") - 1, 0)`. Negative autocorrelation makes the true SE *smaller*, while the heavy-tailed long-run distribution makes it the slowest finite-variance case to lose its skew (observed n = `r show_n(stable["dependent"])`).
+5. **Non-identical (but independent) shots still obey a CLT** (Lindeberg–Feller). However, the textbook formula $\sqrt{\bar p(1-\bar p)/n}$ overstates the SE by about `r pct(1/at("fatigue", 30, "naive_ratio") - 1, 0)`, because varying probabilities reduce variance.
+
+# Study design
+
+## The question and a prediction
+
+The CLT says that if $X_1,\dots,X_n$ are **independent, identically distributed, with finite variance** $\sigma^2$, then
+
+$$\frac{\bar X - \mu}{\sigma/\sqrt n} \xrightarrow{d} N(0,1).$$
+
+It says nothing about *how large* n must be. For that I used two classical consequences of independence:
+
+$$\operatorname{skew}(\bar X) = \frac{\gamma_1}{\sqrt n}, \qquad \operatorname{exkurt}(\bar X) = \frac{\gamma_2}{n},$$
+
+where $\gamma_1$ and $\gamma_2$ are the population's skewness and excess kurtosis. These give a **prediction** for each population that the simulation can confirm or refute. Skewness fades slowly ($1/\sqrt n$), so to halve it you need four times the data.
+
+```{r}
+#| label: tbl-theory
+#| echo: false
+theory <- data.frame(
+  Population = vapply(populations, `[[`, "", "label"),
+  Type       = vapply(populations, `[[`, "", "kind"),
+  Mean       = vapply(populations, `[[`, 0, "mu"),
+  SD         = vapply(populations, `[[`, 0, "sigma"),
+  Skewness   = vapply(populations, `[[`, 0, "skew"),
+  `Excess kurtosis` = vapply(populations, `[[`, 0, "exkurt"),
+  `Predicted n` = show_n(pred),
+  check.names = FALSE
+)
+theory$`Predicted n`[is.na(pred)] <- "n/a"
+kbl(theory)
+```
+
+Notes on the table: the Cauchy's "mean" is its location/median, and its moments do not exist. The dependent process has no closed form, so its moments come from a 1,000,000-step simulated chain (@sec-dependent). The fatigue model has no single population because $p$ changes shot to shot; its prediction uses the exact Poisson-binomial formulas.
+
+## n versus number of simulations
+
+These are separate:
+
+- **n** is the number of observations in *one* sample: `r paste(N_GRID, collapse = ", ")`.
+- **Replications** are how many samples I generate per n: `r format(REPS, big.mark = ",")`. Each gives one sample mean, and together they form the *sampling distribution*.
+
+10,000 replications at n = 30 is still a sample size of 30.
+
+## What "approximately normal" means here {#sec-criterion}
+
+No single cutoff is universal, so I fixed one before looking at results and applied it everywhere. At a given n, the sampling distribution counts as **approximately normal only if all four checks pass**:
+
+| Check | Rule | Why |
+|---|---|---|
+| Symmetry | \|skewness\| ≤ `r CRITERIA$skew` | The CLT's first visible failure is a lopsided histogram |
+| Tails | \|excess kurtosis\| ≤ `r CRITERIA$exkurt` | Heavy or light tails distort extreme probabilities |
+| Spread | `r CRITERIA$se_ratio[1]` ≤ simulated SD / theoretical SE ≤ `r CRITERIA$se_ratio[2]` | The CLT's $\sigma/\sqrt n$ must actually describe the spread |
+| Usefulness | `r pct(CRITERIA$tail[1], 0)` – `r pct(CRITERIA$tail[2], 0)` of means beyond $\mu \pm 1.96\,SE$ | A 95% normal interval should miss about 5% of the time |
+
+Each threshold is several Monte Carlo standard errors wide, so a pass or fail reflects the population rather than simulation noise. With 10,000 replications, SE(skewness) ≈ 0.025, SE(kurtosis) ≈ 0.05, SE(tail rate) ≈ 0.002, and the SD ratio is accurate to about 0.7%.
+
+I also report histograms, Q–Q plots and the **Shapiro–Wilk** test, but I do not use Shapiro–Wilk as a criterion. With 5,000 values it detects deviations far too small to matter (see @sec-shapiro).
+
+For the dependent and fatigue processes, the "theoretical SE" in the spread and tail checks is the **correct** SE for that process. I report the naive i.i.d. formula separately, because applying it blindly is exactly the mistake those cases are meant to expose.
+
+## Reproducibility
+
+- The seed is `SEED = `r SEED``, the last four digits of my student ID, set in `R/config.R`. Each population uses `SEED + k`, so any section can be re-run on its own and reproduce exactly.
+- All simulation logic lives in reusable functions in `R/` and is shown in the appendix.
+- Re-rendering `report/clt_project_1.qmd` with Quarto regenerates every number, table and figure in this report and in `output/`.
+
+# Required populations
+
+```{r}
+#| label: section-helper
+#| include: false
+diag_table <- function(id) {
+  d <- results[[id]]$diag
+  out <- data.frame(
+    n = d$n,
+    `Sim mean` = d$sim_mean, `Theory mean` = d$theo_mean,
+    `Sim SD` = d$sim_sd, `Theory SE` = d$theo_se, `SD/SE` = d$se_ratio,
+    Skew = d$skewness, `Pred. skew` = d$pred_skewness,
+    `Ex. kurt` = d$exkurt, `Pred. kurt` = d$pred_exkurt,
+    `Tail rate` = d$tail_rate, `SW p` = signif(d$sw_p, 2),
+    Normal = ifelse(d$approx_normal, "Yes", "No"),
+    check.names = FALSE
+  )
+  if (all(is.na(out$`Pred. skew`))) out$`Pred. skew` <- NULL
+  if (all(is.na(out$`Pred. kurt`))) out$`Pred. kurt` <- NULL
+  kbl(out)
+}
+```
+
+## Standard normal: the control case
+
+**Prediction.** Every linear combination of independent normals is normal, so $\bar X \sim N(0, 1/n)$ *exactly* at every n. If anything fails here, the method is broken, not the CLT.
+
+```{r}
+#| label: fig-normal-pop
+#| fig-height: 4
+#| fig-cap: "Individual values from N(0, 1)."
+set.seed(SEED); plot_population(pop_normal)
+```
+
+```{r}
+#| label: fig-normal-hist
+#| fig-cap: "Sampling distributions of the mean with the CLT normal curve (red). Same x-axis in every panel."
+plot_sampling_grid(results$normal)
+```
+
+```{r}
+#| label: fig-normal-qq
+#| fig-cap: "Normal Q-Q plots of the sample means."
+plot_qq_grid(results$normal)
+```
+
+```{r}
+#| label: tbl-normal
+#| echo: false
+diag_table("normal")
+```
+
+**Result.** Every check passes from n = `r stable["normal"]` onward. Skewness and kurtosis stay within Monte Carlo noise of 0, the SD/SE ratio is within about 1.5% of 1, and about 5% of means land beyond ±1.96 SE. Shapiro–Wilk rejects at the 5% level in `r sum(results$normal$diag$sw_p < 0.05)` of `r length(N_GRID)` tests, which is what chance alone produces when the null is true. This validates the simulation and the criteria: they do not invent non-normality where there is none.
+
+## Six-sided die: symmetric and discrete
+
+**Prediction.** $\mu = 3.5$, $\sigma = \sqrt{35/12} \approx 1.708$. The die is perfectly symmetric (skewness 0) but flat, with excess kurtosis −1.27. Theory says $|\text{exkurt}(\bar X)| = 1.27/n$ drops below `r CRITERIA$exkurt` by about n = `r pred["die"]`, so this should be fast.
+
+```{r}
+#| label: fig-die-pop
+#| fig-height: 4
+#| fig-cap: "A fair die: six equally likely values."
+set.seed(SEED); plot_population(pop_die)
+```
+
+```{r}
+#| label: fig-die-hist
+#| fig-cap: "Sampling distributions of the mean for a fair die."
+plot_sampling_grid(results$die)
+```
+
+```{r}
+#| label: fig-die-qq
+#| fig-cap: "Q-Q plots: the staircase at small n is the discreteness of the die."
+plot_qq_grid(results$die)
+```
+
+```{r}
+#| label: tbl-die
+#| echo: false
+diag_table("die")
+```
+
+**Result.** The mean of two dice is already triangular and the mean of five already looks bell-shaped. The die passes every check from n = `r stable["die"]`. Before that, the problem is the **flat shape** (negative kurtosis) and, at n = 5, **discreteness**: the mean can only take values in steps of 1/n, so the share of means beyond ±1.96 SE (`r pct(at("die", 5, "tail_rate"))` at n = 5) depends on where those steps fall. The Q–Q staircase at small n shows the same thing. Symmetric populations converge quickly, as predicted.
+
+## Exponential(1): strong right skew
+
+**Prediction.** $\mu = \sigma = 1$, skewness 2, excess kurtosis 6. The skewness of $\bar X$ is $2/\sqrt n$, which is still 0.37 at n = 30 and reaches 0.20 only at **n = 100**. This is the population where "n = 30" should visibly fall short.
+
+```{r}
+#| label: fig-exp-pop
+#| fig-height: 4
+#| fig-cap: "Exponential(1): most values are small, with a long right tail."
+set.seed(SEED); plot_population(pop_exp)
+```
+
+```{r}
+#| label: fig-exp-hist
+#| fig-cap: "Sampling distributions for the exponential. Note the persistent right tail at n = 30."
+plot_sampling_grid(results$exponential, common_x = FALSE)
+```
+
+```{r}
+#| label: fig-exp-qq
+#| fig-cap: "Q-Q plots for the exponential: upward curvature means right skew."
+plot_qq_grid(results$exponential)
+```
+
+```{r}
+#| label: fig-exp-trend
+#| fig-height: 4
+#| fig-cap: "Skewness and kurtosis of the sample means against n (log scale). Dashed line: theory. Shaded band: my threshold."
+plot_shape_trend(results$exponential)
+```
+
+```{r}
+#| label: tbl-exp
+#| echo: false
+diag_table("exponential")
+```
+
+**Result.** The simulated skewness follows $2/\sqrt n$ closely (dashed curve), which confirms the prediction quantitatively. At n = 30 the skewness is `r fmt(at("exponential", 30, "skewness"))`, so the histogram still has a visible right tail and the Q–Q plot still curves upward. The center and spread are already right, though: the simulated mean is `r fmt(at("exponential", 30, "sim_mean"), 3)` and the SD/SE ratio is `r fmt(at("exponential", 30, "se_ratio"))`. The CLT gets the **location and scale** right long before it gets the **shape** right. All four checks pass from n = `r show_n(stable["exponential"])`. Because the predicted threshold n = 100 sits right at the boundary, Monte Carlo noise decides whether n = 100 itself passes (see @sec-robust).
+
+## Binomial(5, 0.10): skewed and highly discrete
+
+**Prediction.** $\mu = 0.5$, $\sigma = \sqrt{0.45} \approx 0.671$, skewness ≈ 1.19, excess kurtosis ≈ 1.02. About 59% of draws are exactly 0. Theory predicts skewness below 0.20 at about n = `r pred["binomial"]`. The sum of n draws is Binomial(5n, 0.1), so the sample mean lives on a lattice of step $1/n$.
+
+```{r}
+#| label: fig-binom-pop
+#| fig-height: 4
+#| fig-cap: "Binomial(5, 0.10): mostly zeros, rarely more than 2."
+set.seed(SEED); plot_population(pop_binom)
+```
+
+```{r}
+#| label: fig-binom-hist
+#| fig-cap: "Sampling distributions for Binomial(5, 0.10). Gaps between bars are the lattice of possible means."
+plot_sampling_grid(results$binomial, common_x = FALSE)
+```
+
+```{r}
+#| label: fig-binom-qq
+#| fig-cap: "Q-Q plots: a skewed staircase that smooths out as n grows."
+plot_qq_grid(results$binomial)
+```
+
+```{r}
+#| label: fig-binom-trend
+#| fig-height: 4
+#| fig-cap: "Skewness and kurtosis vs n for Binomial(5, 0.10)."
+plot_shape_trend(results$binomial)
+```
+
+```{r}
+#| label: tbl-binom
+#| echo: false
+diag_table("binomial")
+```
+
+**Result.** Skewness again tracks theory, reaching `r fmt(at("binomial", 30, "skewness"))` at n = 30, right at the threshold. The more interesting failure is the **tail rate**: `r pct(at("binomial", 2, "tail_rate"))` at n = 2, `r pct(at("binomial", 10, "tail_rate"))` at n = 10, and `r pct(at("binomial", 20, "tail_rate"))` at n = 20. It swings above and below 5% because only a few lattice points lie near ±1.96 SE, so a normal-based 95% interval can be noticeably too wide or too narrow. Moments alone would not reveal this; it is why I included a check that uses the approximation directly. All checks pass from n = `r show_n(stable["binomial"])`.
+
+## Cauchy(0, 1): when the CLT does not apply
+
+**Prediction.** The Cauchy has no mean and no variance, so the CLT's finite-variance condition fails. Theory gives a stronger statement: the mean of n i.i.d. Cauchy(0, 1) draws is itself **exactly Cauchy(0, 1)**. Averaging should not help at all. The IQR of the sample means should stay at 2 (the Cauchy IQR) for every n, rather than shrinking like $1/\sqrt n$.
+
+```{r}
+#| label: fig-cauchy-pop
+#| fig-height: 4
+#| fig-cap: "Cauchy(0, 1), shown on [-10, 10]. About 6% of values fall outside this window."
+set.seed(SEED); plot_population(pop_cauchy, xlim = c(-10, 10))
+```
+
+```{r}
+#| label: fig-cauchy-hist
+#| fig-cap: "Sampling distributions of the Cauchy mean on a fixed window [-10, 10]. They do not narrow as n grows. Theory does not supply a normal curve here."
+plot_sampling_grid(results$cauchy, xlim = c(-10, 10))
+```
+
+```{r}
+#| label: fig-cauchy-qq
+#| fig-cap: "Q-Q plots: extreme points at both ends at every n."
+plot_qq_grid(results$cauchy)
+```
+
+Moment-based diagnostics are meaningless here because the quantities they estimate do not exist. Instead I use quantile-based summaries, which do exist:
+
+```{r}
+#| label: tbl-cauchy
+cauchy_tbl <- data.frame(
+  n = results$cauchy$diag$n,
+  `Sim mean (unstable)` = results$cauchy$diag$sim_mean,
+  `IQR of means` = results$cauchy$diag$iqr,
+  `IQR theory (Cauchy)` = 2,
+  `IQR if it shrank like 1/sqrt(n)` = 2 / sqrt(results$cauchy$diag$n),
+  `Share |mean| > 10` = sapply(results$cauchy$means, function(m) mean(abs(m) > 10)),
+  `Theory share` = 2 * pcauchy(-10),
+  check.names = FALSE
+)
+kbl(cauchy_tbl)
+```
+
+The IQR column is the evidence: about 2 at n = 2 and still about 2 at n = `r format(max(N_GRID), big.mark = ",")`. The share of extreme means stays near the theoretical 6.3%. The average of the `r format(REPS, big.mark = ",")` sample means jumps around (`r fmt(min(results$cauchy$diag$sim_mean))` to `r fmt(max(results$cauchy$diag$sim_mean))`), because one enormous draw can dominate any average.
+
+```{r}
+#| label: fig-cauchy-running
+#| fig-height: 4.5
+#| fig-cap: "A single Cauchy sequence: the running mean never settles, while the running median converges to 0."
+set.seed(SEED + 50)
+xc <- rcauchy(5000)
+run_mean <- cumsum(xc) / seq_along(xc)
+run_med  <- vapply(seq(10, 5000, by = 10), function(i) median(xc[1:i]), 0)
+plot(run_mean, type = "l", col = PAL$fail, xlab = "Number of observations",
+     ylab = "Running estimate", main = "Cauchy: running mean vs running median")
+lines(seq(10, 5000, by = 10), run_med, col = "#1B6CA8", lwd = 2)
+abline(h = 0, lty = 2)
+legend("topright", c("Mean", "Median"), col = c(PAL$fail, "#1B6CA8"),
+       lwd = c(1, 2), bty = "n")
+```
+
+**Result.** The CLT does not apply, and no sample size rescues it. The fix is a different statistic: the sample **median** of Cauchy data *is* asymptotically normal (with SE $\pi/(2\sqrt n)$), which is why robust estimators matter for heavy-tailed data such as financial returns.
+
+# Extra credit: breaking the other assumptions
+
+The three extra populations each break a *different* CLT assumption, or stress the CLT in a different way:
+
+| Process | Independent? | Identically distributed? | Finite variance? |
+|---|---|---|---|
+| Dependent machine failure | **No** | Yes (stationary) | Yes |
+| Non-identical Bernoulli (fatigue) | Yes | **No** | Yes |
+| Age at death (mixture) | Yes | Yes | Yes, but bimodal and irregular |
+
+## Dependent machine failure {#sec-dependent}
+
+**Model** (from the course handout): $\lambda_t = \lambda_0 e^{\beta(X_{t-1}-\mu)}$ and $X_t \mid X_{t-1} \sim \text{Exp}(\lambda_t)$, with $\lambda_0 = 1$, $\beta = 1.25$, $\mu = 1$. A long operating period raises the next failure rate, so long periods tend to be followed by short ones.
+
+**Design decision.** Each simulated sample discards a `r dep_params$burn_in`-step burn-in, so samples come from the process's long-run behaviour rather than its start-up. One sample of size n is n *consecutive* operating times from one machine, and the `r format(REPS, big.mark = ",")` replications are independent machines.
+
+**Prediction.** Three things should differ from the i.i.d. exponential:
+
+1. The long-run distribution is *not* Exp(1). The handout warns that conditional exponential does not mean marginal exponential.
+2. Negative lag-1 correlation should make the true SE **smaller** than $\sigma/\sqrt n$, because errors partly cancel.
+3. The correct variance is $\operatorname{Var}(\bar X) = \frac{\sigma^2}{n}\left[1 + 2\sum_{k=1}^{n-1}\left(1-\frac kn\right)\rho_k\right]$.
+
+```{r}
+#| label: fig-dep-process
+#| fig-height: 7
+#| fig-cap: "The dependent process. Top left: 200 consecutive operating times (long is followed by short). Top right: lag-1 scatter. Bottom left: autocorrelations alternate in sign and die out. Bottom right: the long-run distribution is not Exp(1)."
+old <- par(mfrow = c(2, 2), mar = c(4, 4, 3, 1))
+plot(dep_moments$chain_head, type = "h", col = PAL$pop,
+     xlab = "Failure number t", ylab = "Operating time", main = "200 consecutive operating times")
+set.seed(SEED + 60); ch <- dependent_chain(20000)
+plot(head(ch, -1), tail(ch, -1), pch = 16, cex = 0.3, col = adjustcolor("#2B5C8A", 0.3),
+     xlab = expression(X[t-1]), ylab = expression(X[t]), main = "Lag-1 relationship",
+     xlim = c(0, 12), ylim = c(0, 12))
+barplot(dep_moments$rho[1:15], names.arg = 1:15, col = ifelse(dep_moments$rho[1:15] < 0, PAL$fail, PAL$pass),
+        border = NA, xlab = "Lag k", ylab = expression(rho[k]), main = "Autocorrelation")
+abline(h = 0)
+hist(ch[ch < 15], breaks = 80, probability = TRUE, col = PAL$pop, border = "white",
+     xlab = "Operating time", main = "Long-run distribution vs Exp(1)")
+curve(dexp(x, 1), add = TRUE, lwd = 2, col = "gray20", lty = 2)
+legend("topright", c("Simulated", "Exp(1)"), fill = c(PAL$pop, NA), border = c("white", NA),
+       lty = c(NA, 2), col = c(NA, "gray20"), bty = "n")
+par(old)
+```
+
+```{r}
+#| label: tbl-dep-moments
+#| echo: false
+kbl(data.frame(
+  Quantity = c("Long-run mean", "Long-run SD", "Skewness", "Excess kurtosis",
+               "Lag-1 autocorrelation", "Variance factor 1 + 2*sum(rho)"),
+  `Dependent process` = c(dep_moments$chain_mean, dep_moments$chain_sd, dep_moments$skew,
+                          dep_moments$exkurt, dep_moments$rho[1], dep_moments$lrv_factor),
+  `Independent Exp(1)` = c(1, 1, 2, 6, 0, 1),
+  check.names = FALSE))
+```
+
+```{r}
+#| label: fig-dep-hist
+#| fig-cap: "Sampling distributions for the dependent process with the correct (autocorrelation-adjusted) normal curve."
+plot_sampling_grid(results$dependent, common_x = FALSE)
+```
+
+```{r}
+#| label: fig-dep-qq
+#| fig-cap: "Q-Q plots for the dependent process."
+plot_qq_grid(results$dependent)
+```
+
+```{r}
+#| label: fig-dep-se
+#| fig-height: 4.5
+#| fig-cap: "The naive i.i.d. formula overstates the spread at every n; the autocorrelation-adjusted SE matches the simulation."
+plot_se_check(results$dependent, show_naive = TRUE)
+```
+
+```{r}
+#| label: tbl-dep
+#| echo: false
+d <- results$dependent$diag
+kbl(data.frame(n = d$n, `Sim mean` = d$sim_mean, `Sim SD` = d$sim_sd,
+               `Naive SE` = d$naive_se, `SD / naive SE` = d$naive_ratio,
+               `Correct SE` = d$theo_se, `SD / correct SE` = d$se_ratio,
+               Skew = d$skewness, `Ex. kurt` = d$exkurt, `Tail rate` = d$tail_rate,
+               Normal = ifelse(d$approx_normal, "Yes", "No"), check.names = FALSE))
+```
+
+**Result.** All three predictions hold.
+
+- The long-run distribution has mean `r fmt(dep_moments$chain_mean)` and SD `r fmt(dep_moments$chain_sd)`, not 1 and 1. It is *more* skewed than Exp(1) (`r fmt(dep_moments$skew)` vs 2), because a near-zero operating time drops the next rate to $e^{-1.25} \approx 0.29$, which occasionally produces long periods.
+- The lag-1 correlation is `r fmt(dep_moments$rho[1])` and the autocorrelations alternate in sign, so the variance factor is `r fmt(dep_moments$lrv_factor)`. Using the naive $\sigma/\sqrt n$ **overstates the SE by about `r pct(1 / at("dependent", 30, "naive_ratio") - 1, 0)`** at every n. A confidence interval built that way would be too wide, and a test too conservative. With the autocorrelation-adjusted SE, the SD/SE ratio is within about 2% of 1 at every n ≥ 5.
+- The shape converges slowly because the marginal distribution is so skewed: skewness of the means is `r fmt(at("dependent", 30, "skewness"))` at n = 30 and `r fmt(at("dependent", 1000, "skewness"))` at n = 1000. Observed n: `r show_n(stable["dependent"])`.
+
+A CLT for weakly dependent data does exist, and here the mean is still heading toward normal. But the **standard error has to be rebuilt** from the autocorrelations, and the convergence is slower than an i.i.d. exponential.
+
+## Non-identical Bernoulli: basketball fatigue
+
+**Model** (from the course handout): shot $t$ is made with probability $p_t$, falling linearly from 0.90 on the first shot to 0.50 on the last. Shots are independent but not identically distributed. A sample of size n is n shots with the fatigue schedule spread over those n shots, so the average probability is exactly 0.70 at every n.
+
+**Prediction.** The number of makes is **Poisson-binomial**, not binomial. Its exact moments are
+$$E(\bar X) = \bar p, \quad \operatorname{Var}(\bar X) = \frac{1}{n^2}\sum_t p_t(1-p_t) \;<\; \frac{\bar p(1-\bar p)}{n}.$$
+The inequality holds because $p(1-p)$ is concave, so varying probabilities *reduce* variance. The naive binomial formula should overstate the SE. The Lindeberg–Feller CLT covers independent, non-identical summands with bounded variance, so normality should still arrive.
+
+```{r}
+#| label: fig-fatigue-model
+#| fig-height: 4.5
+#| fig-cap: "Left: the fatigue schedule for one 20-shot game. Right: total makes in 20 shots, fatigue model vs Binomial(20, 0.7) with the same mean."
+old <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+plot(1:20, fatigue_p(20), type = "b", pch = 19, col = PAL$fail, ylim = c(0, 1),
+     xlab = "Shot number", ylab = "P(make)", main = "Fatigue: p falls from 0.90 to 0.50")
+abline(h = 0.7, lty = 2)
+set.seed(SEED + 70)
+games <- 20 * fatigue_means(20, 100000)
+tab_f <- table(factor(games, levels = 0:20)) / length(games)
+plot(0:20 - 0.15, as.numeric(tab_f), type = "h", lwd = 5, lend = 1, col = PAL$pop,
+     xlab = "Makes in 20 shots", ylab = "Probability", main = "Fatigue vs constant p = 0.70",
+     xlim = c(5, 20))
+lines(0:20 + 0.15, dbinom(0:20, 20, 0.7), type = "h", lwd = 5, lend = 1, col = "gray50")
+legend("topleft", c("Fatigue (simulated)", "Binomial(20, 0.7)"),
+       col = c(PAL$pop, "gray50"), lwd = 5, bty = "n")
+par(old)
+```
+
+In a single 20-shot game the fatigue model gives a variance of `r fmt(var(games))` makes², compared with `r fmt(20 * 0.7 * 0.3)` for Binomial(20, 0.7); the exact value is `r fmt(sum(fatigue_p(20) * (1 - fatigue_p(20))))`.
+
+```{r}
+#| label: fig-fatigue-hist
+#| fig-cap: "Sampling distributions of the shooting percentage with the exact Poisson-binomial normal curve."
+plot_sampling_grid(results$fatigue, common_x = FALSE)
+```
+
+```{r}
+#| label: fig-fatigue-qq
+#| fig-cap: "Q-Q plots for the fatigue model."
+plot_qq_grid(results$fatigue)
+```
+
+```{r}
+#| label: tbl-fatigue
+#| echo: false
+d <- results$fatigue$diag
+kbl(data.frame(n = d$n, `Sim mean` = d$sim_mean, `Sim SD` = d$sim_sd,
+               `Naive SE` = d$naive_se, `SD / naive SE` = d$naive_ratio,
+               `Exact SE` = d$theo_se, `SD / exact SE` = d$se_ratio,
+               Skew = d$skewness, `Pred. skew` = d$pred_skewness,
+               `Tail rate` = d$tail_rate,
+               Normal = ifelse(d$approx_normal, "Yes", "No"), check.names = FALSE))
+```
+
+**Result.** The exact SE matches the simulation (ratio ≈ 1.00) while the naive binomial SE is about `r pct(1 / at("fatigue", 30, "naive_ratio") - 1, 0)` too large at every n. The skew is mild and *negative*: most shots have p > 0.5, so the distribution leans left. It reaches the threshold quickly, consistent with the exact prediction of n = `r pred["fatigue"]`. What delays the verdict is again **discreteness**: the shooting percentage is a multiple of $1/n$, and the tail rate swings (`r pct(at("fatigue", 20, "tail_rate"))` at n = 20, `r pct(at("fatigue", 50, "tail_rate"))` at n = 50). All checks pass from n = `r show_n(stable["fatigue"])`. Normality arrives, but only with the correct variance formula.
+
+## Age at death: a bimodal, real-world-shaped population
+
+**Model** (from the course handout): a discrete distribution on ages 0–100 that mixes an exponentially decaying infant-mortality spike with a bell centred at 65, normalized to sum to 1. It is synthetic and is not a fitted life table.
+
+**Prediction.** $\mu =$ `r fmt(age_mu)`, $\sigma =$ `r fmt(age_sigma)`, skewness `r fmt(age_skew)` (left skew from the adult bulk), and excess kurtosis `r fmt(age_exkurt)`. Despite two modes, the moments are modest, so theory predicts convergence by about n = `r pred["age"]`. The question is whether the bimodality causes problems the moments miss.
+
+```{r}
+#| label: fig-age-pop
+#| fig-height: 4.5
+#| fig-cap: "The custom age-at-death distribution: an early-life spike and an adult peak near 65."
+plot(age, 100 * age_prob, type = "l", lwd = 3, col = PAL$pop,
+     xlab = "Age at death", ylab = "Percent of deaths",
+     main = "Custom age-at-death distribution")
+abline(h = seq(0, 4.5, 0.5), col = PAL$grid, lty = 2)
+abline(v = age_mu, lty = 2, lwd = 2)
+text(age_mu, 4.2, paste("mean =", fmt(age_mu, 1)), pos = 4)
+```
+
+```{r}
+#| label: fig-age-hist
+#| fig-cap: "Sampling distributions of mean age at death."
+plot_sampling_grid(results$age, common_x = FALSE)
+```
+
+```{r}
+#| label: fig-age-qq
+#| fig-cap: "Q-Q plots for the age-at-death mean."
+plot_qq_grid(results$age)
+```
+
+```{r}
+#| label: tbl-age
+#| echo: false
+diag_table("age")
+```
+
+**Result.** Bimodality fades quickly: at n = 2 the histogram is still lumpy (averaging an infant death with an adult death fills the middle), but by n = 10 it is a single hump. The simulated skewness tracks $\gamma_1/\sqrt n$, and every check passes from n = `r show_n(stable["age"])`. The mean (`r fmt(age_mu)`) is a poor *description* of a typical death, since few people die near 50. Even so, the *sample mean* behaves well. The CLT is about the statistic, not about whether the population is easy to describe.
+
+# Cross-population comparison
+
+```{r}
+#| label: fig-convergence-all
+#| fig-height: 6
+#| fig-cap: "Skewness of the sample mean vs n for every population except the Cauchy (log-log). For i.i.d. populations these are straight lines of slope -1/2."
+plot_convergence_all(results)
+```
+
+On a log-log scale the skewed i.i.d. populations fall along roughly parallel lines of slope −1/2, as $\gamma_1/\sqrt n$ predicts, until they reach the Monte Carlo noise floor (about 0.02–0.05 with 10,000 replications). The lines differ mainly in where they start. The normal and die curves bounce around near zero because their true skewness is 0, so only noise remains. The dependent process is the outlier, and stays the most skewed throughout. At the n = 30 reference line, the populations that pass comfortably are the ones that *started* symmetric (normal, die). Age at death, with population skewness `r fmt(age_skew)`, sits right at the threshold, and the strongly skewed populations are still well above it.
+
+## Prediction vs simulation
+
+```{r}
+#| label: tbl-pred-vs-obs
+#| echo: false
+kbl(data.frame(
+  Population = vapply(populations, `[[`, "", "label"),
+  `Predicted n (skew + kurtosis)` = ifelse(is.na(pred), "n/a", pred),
+  `Observed n (all four checks)` = show_n(stable),
+  `Agrees?` = ifelse(is.na(pred), "-",
+                     ifelse(!is.na(stable) & stable <= 2.5 * pred & stable >= pred / 2.5, "Yes", "No")),
+  check.names = FALSE))
+```
+
+The theoretical prediction is a good guide for the continuous i.i.d. populations, within one grid step. Where the two diverge, the reason is always the same: the prediction uses only skewness and kurtosis, while the simulation also checks the **tail rate**, which discreteness can upset. On a coarse grid, "observed n" also jumps to the next grid point (for example, a prediction of 36 becomes an observed 50).
+
+## Is Shapiro–Wilk useful here? {#sec-shapiro}
+
+```{r}
+#| label: tbl-shapiro
+#| echo: false
+sw <- reshape(diag_all[, c("population", "n", "sw_p")], idvar = "population",
+              timevar = "n", direction = "wide")
+names(sw) <- c("Population", paste0("n=", N_GRID))
+sw[, -1] <- lapply(sw[, -1], function(x) formatC(x, format = "e", digits = 1))
+kbl(sw)
+```
+
+At n = 30 Shapiro–Wilk rejects normality (p < 0.05) for almost every non-normal population, including the die and age at death, whose histograms and Q–Q plots look essentially normal. With 5,000 values the test has enough power to detect deviations far too small to matter for inference. It answers "is this *exactly* normal?" (never, for a non-normal parent), not "is normal *good enough*?" That is why I report it but use effect-size checks for the verdict.
+
+## Does the seed matter? {#sec-robust}
+
+Conclusions should not depend on one lucky seed. I repeated the full study for every population with `r length(ROBUSTNESS_SEEDS)` different seeds and recorded the observed n each time.
+
+```{r}
+#| label: tbl-robustness
+#| cache: false
+robust <- sapply(names(populations), function(id) {
+  sapply(seq_along(ROBUSTNESS_SEEDS), function(s) {
+    # same per-population offset as the main run, so the first column reproduces it
+    set.seed(ROBUSTNESS_SEEDS[s] + match(id, names(populations)))
+    means <- lapply(N_GRID, function(n) populations[[id]]$means(n, REPS))
+    first_stable_n(diagnose_all(means, populations[[id]]))
+  })
+})
+robust_tbl <- data.frame(
+  Population = vapply(populations, `[[`, "", "label"),
+  t(apply(robust, 2, show_n)),
+  check.names = FALSE
+)
+names(robust_tbl)[-1] <- paste("Seed", ROBUSTNESS_SEEDS)
+kbl(robust_tbl)
+```
+
+The ordering of the populations is stable across seeds: normal, die and age at death converge early; binomial and exponential need tens to hundreds; the dependent process needs the most; the Cauchy never converges. Where a population sits on the boundary of my thresholds (the exponential near n = 100, or the lattice-valued populations whose tail rate oscillates), the exact grid point shifts by one or two steps between seeds. That variation is itself a finding: "the n" is a range, not a number.
+
+# Conclusions
+
+**Is the number 30?** Only for some populations, and the evidence says which:
+
+- **Symmetric, i.i.d., finite variance** (normal, die): n = 30 is more than enough. The normal is exact at every n; the die passes from about n = `r stable["die"]`.
+- **Moderately skewed** (age at death, $\gamma_1 =$ `r fmt(age_skew)`): n = 30 is roughly the boundary. Theory predicts `r pred["age"]`, and the observed n ranged over `r paste(unique(range(robust[, "age"])), collapse = " to ")` across seeds, because the skewness of the mean at n = 20–30 sits right at my 0.20 line. Bimodality by itself did not slow convergence.
+- **Strongly skewed** (exponential, $\gamma_1 = 2$): n = 30 leaves visible skew (`r fmt(at("exponential", 30, "skewness"))`). The rule $n \gtrsim (\gamma_1/0.2)^2$ predicted 100, and the simulation confirmed it (observed `r paste(unique(range(robust[, "exponential"])), collapse = " to ")` across seeds). **Skewness is the single best predictor of the required n.**
+- **Discrete and skewed** (binomial n = 5, p = 0.1): predicted `r pred["binomial"]`, observed `r stable["binomial"]`, and lattice effects make normal-based tail probabilities unreliable at small n even when the moments look fine.
+- **Infinite variance** (Cauchy): no n works. The mean of 2,000 draws is as variable as one draw. Use the median.
+- **Dependent data**: convergence is much slower (observed `r paste(unique(range(robust[, "dependent"])), collapse = " to ")` across seeds). More importantly, the $\sigma/\sqrt n$ formula is wrong (here by about `r pct(1 / at("dependent", 30, "naive_ratio") - 1, 0)`) regardless of n.
+- **Non-identical data**: the CLT still holds (Lindeberg–Feller), but the variance must come from the actual $p_t$, not from the average p.
+
+Across every population, the CLT got the **center** right immediately and the **spread** right whenever the correct SE formula was used. It is the **shape** that needs a large n, and how large depends on the skewness of what you average.
+
+**Limitations and what would change my mind.**
+
+- The criterion is mine. A stricter skewness threshold (say 0.1) would roughly quadruple every predicted n. The *ranking* of populations would not change.
+- The n grid is coarse, so "observed n" is the first grid point that passes, not an exact boundary.
+- 10,000 replications cannot resolve skewness differences below about 0.05. Populations right at a threshold can flip between seeds (@sec-robust).
+- The dependent process's "true" moments come from a long simulation, not a closed form. Its SE formula truncates autocorrelations at lag 30, where they are below 0.01.
+- Each extra-credit model is a stylized version from the course handout, not a fitted real-world model.
+
+# Appendix: code {.unnumbered}
+
+All simulation code is reusable and lives in `R/`. It is reproduced here so this report is self-contained.
+
+::: {.panel-tabset}
+
+## config.R
+```{r}
+#| file: ../R/config.R
+#| eval: false
+#| code-fold: false
+```
+
+## populations.R
+```{r}
+#| file: ../R/populations.R
+#| eval: false
+#| code-fold: false
+```
+
+## simulate.R
+```{r}
+#| file: ../R/simulate.R
+#| eval: false
+#| code-fold: false
+```
+
+## plots.R
+```{r}
+#| file: ../R/plots.R
+#| eval: false
+#| code-fold: false
+```
+
+:::
+
+## Session information {.unnumbered}
+
+```{r}
+#| label: session-info
+sessionInfo()
+```
