@@ -20,6 +20,8 @@ This set the seed to **6877** (the last four digits, as the guidance requires) a
 
 In response, all of Claude's written interpretation (the per-population "Result" paragraphs, the key findings, the cross-population discussion and the conclusions) was removed from the report and README, and replaced with guiding questions for me to answer myself.
 
+I then wrote the conclusions and the 14 interpretation sections myself and sent them as follow-up messages; they were inserted into the report unchanged apart from math formatting.
+
 ## 2. Who did what
 
 | Part | Written by |
@@ -27,7 +29,7 @@ In response, all of Claude's written interpretation (the per-population "Result"
 | Simulation code (`R/`), figures, tables, render script | Claude |
 | Theory-based predictions and study-design text in the report | Claude |
 | **Conclusions** (report and README), including the short answer to "Is the number 30?" | **Me.** Claude only converted my math delimiters to Quarto syntax and checked my numbers against the results |
-| Per-population interpretation ("Your analysis" sections) | Me, in progress |
+| **Per-population interpretation**, key findings, cross-population discussion, Shapiro–Wilk and robustness sections | **Me.** I answered guiding questions that Claude wrote, using the result tables and figures. Claude converted math delimiters and checked my cited numbers against the results |
 
 ## 3. Design decisions made with the AI
 
