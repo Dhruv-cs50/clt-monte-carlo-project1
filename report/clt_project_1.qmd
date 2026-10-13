@@ -111,12 +111,7 @@ kbl(exec)
 
 *Predicted n* comes from theory before simulating: the smallest n at which the skewness and kurtosis of the sample mean fall inside my thresholds. *Observed n* is the smallest simulated n from which **all four** checks pass and keep passing at every larger n.
 
-::: {.callout-note title="Your analysis: Key findings"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Summarize your four or five most important findings in your own words, one sentence each, with the number that supports it.
-:::
+**Key findings.** There was no universal cutoff: the die passed consistently from $n=10$, while the exponential needed $n=100$. Discreteness affected tail probabilities even when the shape looked reasonable, with the fatigue model’s tail rate ranging from 2.2% to 7.0% at small sample sizes. Averaging did not help the Cauchy distribution, whose sample-mean IQR was still about 1.99 at $n=2000$. Dependence changed the standard error: the usual formula overstated the machine-failure process’s spread by roughly 16–20%. Independent observations did not have to be identically distributed for normality to emerge, since the fatigue model passed consistently from $n=100$ using its exact standard error.
 
 # Study design
 
@@ -235,14 +230,7 @@ plot_qq_grid(results$normal)
 diag_table("normal")
 ```
 
-::: {.callout-note title="Your analysis: Standard normal"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Did every check pass at every n? Why is that expected here?
-- Why is this population a useful "control" for the whole study?
-- How many Shapiro–Wilk tests rejected, and is that more than chance alone would produce?
-:::
+**Result.** All four checks passed at every sample size tested. This makes sense because the mean of independent normal observations is exactly normal, even for small samples. It is a useful control because we already know what the answer should be, so unexpected results could reveal problems with the simulation or diagnostics. Shapiro–Wilk rejected once out of 11 tests, at $n=5$. At a 5% significance level, occasional false rejections are expected, so one rejection is not surprising.
 
 ## Six-sided die: symmetric and discrete
 
@@ -273,14 +261,7 @@ plot_qq_grid(results$die)
 diag_table("die")
 ```
 
-::: {.callout-note title="Your analysis: Six-sided die"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- What shape does the mean of two dice have? When does it start looking bell-shaped?
-- Which check fails at small n: skewness, kurtosis, spread or tails? Why, for a symmetric distribution?
-- What causes the staircase in the small-n Q–Q plots? From what n do all checks pass?
-:::
+**Result.** The mean of two dice has a triangular distribution centered at 3.5. It starts looking rounded and bell-shaped around $n=5$, although all four checks only pass consistently from $n=10$. At $n=2$, excess kurtosis fails because the distribution has lighter tails than a normal distribution; symmetry keeps skewness close to zero. At $n=5$, kurtosis passes, but the tail rate is 6.9%, above the allowed range. The staircase in the Q–Q plots comes from repeated values: the sample mean can only increase in steps of $1/n$.
 
 ## Exponential(1): strong right skew
 
@@ -318,14 +299,7 @@ plot_shape_trend(results$exponential)
 diag_table("exponential")
 ```
 
-::: {.callout-note title="Your analysis: Exponential"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Does the simulated skewness follow the 2/√n curve? What is it at n = 30, and how does that show up in the histogram and Q–Q plot?
-- At n = 30, are the center and spread already correct even though the shape is not?
-- From what n do all checks pass, and how does that compare with the prediction of 100?
-:::
+**Result.** The simulated skewness generally follows $2/\sqrt n$. At $n=30$, it is 0.396 compared with the predicted 0.365, leaving a noticeable right tail in the histogram and upward curvature in the Q–Q plot. However, the center and spread are already accurate: the simulated mean is 1.001, and the simulated SD is 0.182 compared with a theoretical SE of 0.183. This shows that getting the mean and variance right does not guarantee a normal shape. All four checks pass consistently from $n=100$, matching the prediction.
 
 ## Binomial(5, 0.10): skewed and highly discrete
 
@@ -363,14 +337,7 @@ plot_shape_trend(results$binomial)
 diag_table("binomial")
 ```
 
-::: {.callout-note title="Your analysis: Binomial(5, 0.10)"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Does the simulated skewness track the theory? Where is it at n = 30?
-- Look at the tail-rate column for small n. Why does it swing above and below 5%? (Hint: what values can the sample mean take?)
-- What does that mean for a normal-based 95% interval? From what n do all checks pass?
-:::
+**Result.** The simulated skewness follows the theoretical pattern fairly closely. At $n=30$, it is 0.208 compared with the predicted 0.218, narrowly missing the 0.20 cutoff. The tail rate jumps around at smaller sample sizes—for example, 7.6% at $n=2$, 3.0% at $n=5$, and 6.4% at $n=20$. This happens because sample means are spaced $1/n$ apart, so the normal cutoffs can fall between different attainable values. Consequently, a normal-based 95% interval can cover too little or too much. All four checks pass consistently from $n=50$.
 
 ## Cauchy(0, 1): when the CLT does not apply
 
@@ -412,13 +379,7 @@ cauchy_tbl <- data.frame(
 kbl(cauchy_tbl)
 ```
 
-::: {.callout-note title="Your analysis: Cauchy evidence"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- How does the IQR of the sample means change from n = 2 to n = 2000? What would it do if the CLT held (see the "shrank like 1/sqrt(n)" column)?
-- Why does the average of the sample means jump around so much?
-:::
+The IQR barely changes, going from 2.065 at $n=2$ to 1.990 at $n=2000$. This is completely different from the shrinking benchmark in the table, which falls from 1.414 to about 0.045. The sample means are therefore not concentrating as the sample size increases. Their average also jumps dramatically—for example, from 103.903 at $n=2$ to $-0.345$ at $n=5$—because occasional extreme observations dominate the arithmetic mean. Since the Cauchy has no finite population mean, there is no ordinary mean for these averages to settle around.
 
 ```{r}
 #| label: fig-cauchy-running
@@ -436,14 +397,7 @@ legend("topright", c("Mean", "Median"), col = c(PAL$fail, "#1B6CA8"),
        lwd = c(1, 2), bty = "n")
 ```
 
-::: {.callout-note title="Your analysis: Cauchy"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Does the CLT apply to the Cauchy? Which assumption fails?
-- Is there any n at which the sample mean becomes reliable?
-- In the running-mean plot, which estimator settles down? What statistic would you use for heavy-tailed data, and where might such data occur in practice?
-:::
+**Result.** The usual CLT does not apply because the Cauchy has neither a finite mean nor a finite variance. There is no sample size that makes its sample mean a consistently reliable estimate of its location: the mean of any number of independent Cauchy observations still has the same Cauchy distribution. In the running-estimate plot, the median settles near zero while the mean remains unstable. I would use the median to describe the center of this population, together with the IQR for spread. Such extreme behavior can arise in ratios of noisy measurements when the denominator gets close to zero.
 
 # Extra credit: breaking the other assumptions
 
@@ -531,16 +485,7 @@ kbl(data.frame(n = d$n, `Sim mean` = d$sim_mean, `Sim SD` = d$sim_sd,
                Normal = ifelse(d$approx_normal, "Yes", "No"), check.names = FALSE))
 ```
 
-::: {.callout-note title="Your analysis: Dependent process"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Are the long-run mean and SD (table above) equal to 1, as for Exp(1)? Why is the long-run distribution more skewed than Exp(1)?
-- What does a negative lag-1 autocorrelation mean physically for this machine?
-- Does the naive σ/√n overstate or understate the true spread, and by roughly how much? What would that do to a 95% confidence interval?
-- How quickly does the shape converge compared with the i.i.d. exponential? What is the observed n?
-- Does dependence stop the CLT from working here, or does it change something else?
-:::
+**Result.** The long-run mean and SD are about 1.676 and 2.551, not 1. Although each operating time is conditionally exponential, its rate changes, creating a mixture with a longer right tail and skewness of 2.901 rather than 2. The lag-1 correlation of $-0.365$ means long operating periods tend to be followed by short ones. At $n=30$, the naive SE is 0.466 compared with the corrected 0.397, about 17% too large, which would make an interval unnecessarily wide. Shape convergence is also slower: this process passes consistently from $n=1000$, compared with $n=100$ for the independent exponential. The results suggest dependence changes the variance calculation and convergence speed rather than preventing eventual normality here.
 
 ## Non-identical Bernoulli: basketball fatigue
 
@@ -596,15 +541,7 @@ kbl(data.frame(n = d$n, `Sim mean` = d$sim_mean, `Sim SD` = d$sim_sd,
                Normal = ifelse(d$approx_normal, "Yes", "No"), check.names = FALSE))
 ```
 
-::: {.callout-note title="Your analysis: Fatigue model"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Compare "SD / naive SE" with "SD / exact SE". Which formula describes the spread, and by how much is the other one off?
-- Why does varying p reduce the variance compared with a constant p = 0.70?
-- What sign is the skewness, and why does that make sense when every p is at least 0.5?
-- The shots are not identically distributed. Does the mean still become normal? What held up the verdict (see the tail-rate column)?
-:::
+**Result.** The exact SE describes the simulated spread better. At $n=30$, SD/exact SE is 0.989, while SD/naive SE is 0.955; the naive formula generally overstates the SE by roughly 3–5% at moderate and large sample sizes. Varying the probabilities reduces the average value of $p(1-p)$ compared with keeping every probability at 0.70. The skewness is negative, which makes sense because probabilities above 0.5 make failures less common than successes. Despite the changing probabilities, the mean becomes approximately normal. Discrete tail probabilities delay the stable verdict: it passes at $n=30$, fails at $n=50$ with a 3.5% tail rate, and passes consistently from $n=100$.
 
 ## Age at death: a bimodal, real-world-shaped population
 
@@ -642,14 +579,7 @@ plot_qq_grid(results$age)
 diag_table("age")
 ```
 
-::: {.callout-note title="Your analysis: Age at death"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- At what n does the bimodality disappear from the histograms?
-- Does the simulated skewness follow the theory, and from what n do all four checks pass?
-- The population mean is about 50, yet few deaths happen near 50. Does that matter for the CLT? Why or why not?
-:::
+**Result.** The separate peaks are mostly gone by $n=5$, and the histogram looks much smoother by $n=10$. Skewness generally follows the predicted downward trend in magnitude, although simulation noise matters near the cutoff. At $n=30$, the simulated skewness is $-0.205$, just outside the allowed range, and all four checks pass consistently from $n=50$. The population mean being near 50 does not require many individual deaths to occur near 50. The CLT concerns averages across samples, and this population satisfies the independence, identical-distribution, and finite-variance conditions despite its unusual shape.
 
 # Cross-population comparison
 
@@ -660,14 +590,7 @@ Questions to answer, using the figures and table above:
 plot_convergence_all(results)
 ```
 
-::: {.callout-note title="Your analysis: Convergence chart"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- What slope do the skewed i.i.d. lines have on this log-log plot, and what formula does that slope correspond to?
-- Why do the normal and die lines bounce around near zero instead of falling?
-- Which process is the outlier, and where does each population sit at the n = 30 line?
-:::
+The skewed i.i.d. populations roughly follow a slope of $-1/2$ on the log-log plot, corresponding to $|\gamma_1|/\sqrt n$. The normal and die lines bounce around because their true skewness is already zero, leaving only simulation noise. The dependent process stands out as the slowest to lose its skewness. At $n=30$, absolute skewness is about 0.015 for normal, 0.004 for the die, 0.396 for exponential, 0.208 for binomial, 0.753 for the dependent process, 0.143 for fatigue, and 0.205 for age at death. Cauchy is excluded because its population skewness is undefined.
 
 ## Prediction vs simulation
 
@@ -683,14 +606,7 @@ kbl(data.frame(
   check.names = FALSE))
 ```
 
-::: {.callout-note title="Your analysis: Prediction vs simulation"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- For which populations did the theory-based prediction match the observed n?
-- Where they differ, which of the four checks caused it? (Look at the tail-rate column for the discrete populations.)
-- How much of the gap is just the coarse n grid?
-:::
+The exponential is the exact numerical match: both predicted and observed $n$ are 100. The normal prediction is 1, but the simulation starts at 2; similarly, the binomial prediction of 36 lies between the tested values 30 and 50. The die’s prediction of 5 misses a tail-rate failure at that sample size, delaying the verdict to 10. The fatigue prediction of 15 misses later tail-rate failures, so consistent passing starts at 100. For age at death, the prediction is 19, but simulated skewness narrowly fails at 20 and 30, delaying the verdict to 50. Thus, some gaps reflect the coarse grid, while others reflect additional checks and simulation noise.
 
 ## Is Shapiro–Wilk useful here? {#sec-shapiro}
 
@@ -704,14 +620,7 @@ sw[, -1] <- lapply(sw[, -1], function(x) formatC(x, format = "e", digits = 1))
 kbl(sw)
 ```
 
-::: {.callout-note title="Your analysis: Shapiro–Wilk"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- At n = 30, which populations does Shapiro–Wilk reject? Do their histograms and Q–Q plots look badly non-normal?
-- Why can a test on 5,000 values reject even when the normal approximation is good enough for practical use?
-- Should Shapiro–Wilk decide your verdict? Why or why not?
-:::
+At $n=30$, Shapiro–Wilk rejects every population except the standard normal. However, that does not mean all seven approximations are equally poor: the die and fatigue model pass the four practical checks despite their significant test results. With 5,000 values, Shapiro–Wilk can detect small departures from exact normality, including discreteness, that may have little practical effect. The Cauchy and dependent process show much clearer departures in their plots. I would report Shapiro–Wilk as supporting evidence, but not let it decide the verdict, because the question is whether the approximation is useful rather than perfectly normal.
 
 ## Does the seed matter? {#sec-robust}
 
@@ -737,14 +646,7 @@ names(robust_tbl)[-1] <- paste("Seed", ROBUSTNESS_SEEDS)
 kbl(robust_tbl)
 ```
 
-::: {.callout-note title="Your analysis: Robustness"}
-<!-- Replace this whole box with your own interpretation, written in your own words. -->
-Questions to answer, using the figures and table above:
-
-- Did the ranking of the populations change across the five seeds?
-- Which populations moved between grid points, and why are those the ones near a threshold?
-- What does this tell you about reporting a single "required n"?
-:::
+The broad pattern stayed the same, but the exact rankings and ties did change. Normal and the die were consistently fastest, the dependent process was the slowest finite-variance case, and Cauchy never passed. The exponential moved between 100 and 250, the dependent process between 500 and 2000, and age at death between 20 and 50. These populations had diagnostics close enough to a cutoff for simulation noise to change the verdict. Normal, die, binomial, and fatigue had unchanged observed cutoffs across the five seeds. This suggests reporting a range tied to the chosen criteria and sample-size grid, rather than treating one “required $n$” as an exact population property.
 
 # Conclusions
 
